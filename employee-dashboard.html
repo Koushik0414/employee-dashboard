@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Employee Dashboard App</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin:0; display:flex; height:100vh; }
+    nav { width:200px; background:#2c3e50; color:#fff; display:flex; flex-direction:column; }
+    nav h2 { text-align:center; padding:20px 0; border-bottom:1px solid #34495e; }
+    nav button { padding:15px; border:none; background:none; color:#fff; cursor:pointer; text-align:left; width:100%; border-bottom:1px solid #34495e; }
+    nav button:hover { background:#34495e; }
+    main { flex:1; padding:20px; overflow-y:auto; background:#f4f6f8; }
+    section { display:none; }
+    section.active { display:block; }
+    table { width:100%; border-collapse:collapse; margin-bottom:20px; }
+    table, th, td { border:1px solid #ddd; }
+    th, td { padding:10px; text-align:left; }
+    th { background:#2c3e50; color:white; }
+    form input, form select, form button { padding:8px; margin:5px; }
+    form button { background:#2c3e50; color:#fff; border:none; cursor:pointer; border-radius:5px; }
+    #uploadCsv { margin:10px 0; }
+    #exportBtn { padding:5px 10px; background:#27ae60; color:white; border:none; border-radius:5px; cursor:pointer; margin-bottom:10px; }
+    .chart-container { width:80%; max-width:600px; margin:20px 0; }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <h2>Menu</h2>
+    <button onclick="showSection('addEmployee')">Add / Update Employee</button>
+    <button onclick="showSection('employeeList')">Employee List</button>
+    <button onclick="showSection('csvUpload')">Add via CSV</button>
+    <button onclick="showSection('statistics')">Employee Statistics</button>
+  </nav>
+
+  <main>
+    <!-- Add / Update Employee -->
+    <section id="addEmployee" class="active">
+      <h2>Add / Update Employee</h2>
+      <form id="empForm">
+        <input type="number" id="empId" placeholder="Employee ID" required>
+        <input type="text" id="empName" placeholder="Name" required>
+        <select id="empDept" required>
+          <option value="">Select Department</option>
+          <option value="IT">IT</option>
+          <option value="HR">HR</option>
+          <option value="Finance">Finance</option>
+        </select>
+        <input type="text" id="empRole" placeholder="Role" required>
+        <input type="number" id="empSalary" placeholder="Salary" required>
+        <button type="submit">Save Employee</button>
+      </form>
+    </section>
+
+    <!-- Employee List -->
+    <section id="employeeList">
+      <h2>Employee List</h2>
+      <button id="exportBtn">Download CSV</button>
+      <table id="empTable">
+        <thead>
+          <tr><th>ID</th><th>Name</th><th>Dept</th><th>Role</th><th>Salary</th><th>Actions</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <!-- Add via CSV -->
+    <section id="csvUpload">
+      <h2>Add Employees via CSV</h2>
+      <input type="file" id="uploadCsv" accept=".csv">
+      <p>CSV format: ID,Name,Department,Role,Salary</p>
+    </section>
+
+    <!-- Employee Statistics -->
+    <section id="statistics">
+      <h2>Employee Statistics</h2>
+      <div class="chart-container"><canvas id="empChart"></canvas></div>
+      <div class="chart-container"><canvas id="salaryChart"></canvas></div>
+    </section>
+  </main>
+
+  <script>
+    let employees = JSON.parse(localStorage.getItem('employees') || '[]');
+
+    function showSection(id) {
+      document.querySelectorAll('section').forEach(s => s.classList.remove('active'));
+      document.getElementById(id).classList.add('active');
+      if(id==='employeeList') renderTable();
+      if(id==='statistics') updateCharts();
+    }
+
+    // Add / Update Employee
+    const empForm = document.getElementById('empForm');
+    empForm.addEventListener('submit', e=>{
+      e.preventDefault();
+      const id=document.getElementById('empId').value;
+      const name=document.getElementById('empName').value;
+      const dept=document.getElementById('empDept').value;
+      const role=document.getElementById('empRole').value;
+      const salary=document.getElementById('empSalary').value;
+
+      const index=employees.findIndex(emp=>emp.id==id);
+      if(index>=0) employees[index]={id,name,dept,role,salary};
+      else employees.push({id,name,dept,role,salary});
+      localStorage.setItem('employees', JSON.stringify(employees));
+      empForm.reset(); alert("Saved!");
+    });
+
+    // Employee Table
+    const empTableBody = document.querySelector('#empTable tbody');
+    function renderTable() {
+      empTableBody.innerHTML='';
+      employees.forEach(emp=>{
+        empTableBody.innerHTML+=`<tr>
+          <td>${emp.id}</td><td>${emp.name}</td><td>${emp.dept}</td><td>${emp.role}</td><td>${emp.salary}</td>
+          <td>
+            <button onclick="editEmployee(${emp.id})">Edit</button>
+            <button onclick="deleteEmployee(${emp.id})">Delete</button>
+          </td>
+        </tr>`;
+      });
+    }
+    function editEmployee(id) {
+      const emp=employees.find(e=>e.id==id);
+      if(!emp) return;
+      showSection('addEmployee');
+      document.getElementById('empId').value=emp.id;
+      document.getElementById('empName').value=emp.name;
+      document.getElementById('empDept').value=emp.dept;
+      document.getElementById('empRole').value=emp.role;
+      document.getElementById('empSalary').value=emp.salary;
+    }
+    function deleteEmployee(id){
+      employees=employees.filter(e=>e.id!=id);
+      localStorage.setItem('employees', JSON.stringify(employees));
+      renderTable();
+    }
+
+    // CSV Upload
+    document.getElementById('uploadCsv').addEventListener('change', function(e){
+      const file = e.target.files[0];
+      if(!file) return;
+      const reader = new FileReader();
+      reader.onload = function(evt){
+        const lines = evt.target.result.split('\n');
+        lines.forEach(line=>{
+          const [id,name,dept,role,salary] = line.trim().split(',');
+          if(id && name) employees.push({id,name,dept,role,salary});
+        });
+        localStorage.setItem('employees', JSON.stringify(employees));
+        alert("CSV Imported!");
+      }
+      reader.readAsText(file);
+    });
+
+    // Export CSV
+    document.getElementById('exportBtn').addEventListener('click',()=>{
+      const csvContent="data:text/csv;charset=utf-8," + ["ID,Name,Dept,Role,Salary", ...employees.map(e=>`${e.id},${e.name},${e.dept},${e.role},${e.salary}`)].join('\n');
+      const link=document.createElement('a');
+      link.setAttribute('href', csvContent);
+      link.setAttribute('download','employees.csv');
+      document.body.appendChild(link); link.click(); document.body.removeChild(link);
+    });
+
+    // Charts
+    const empCtx = document.getElementById('empChart');
+    const salaryCtx = document.getElementById('salaryChart');
+    let empChart = new Chart(empCtx,{ type:'bar', data:{ labels:['IT','HR','Finance'], datasets:[{label:'Employees', data:[0,0,0], backgroundColor:['#3498db','#2ecc71','#e74c3c']}]}, options:{ responsive:true }});
+    let salaryChart = new Chart(salaryCtx,{ type:'pie', data:{ labels:['IT','HR','Finance'], datasets:[{label:'Avg Salary', data:[0,0,0], backgroundColor:['#9b59b6','#f1c40f','#1abc9c']}]}, options:{ responsive:true }});
+    function updateCharts(){
+      const deptCounts={IT:0,HR:0,Finance:0}; const deptSalaries={IT:[],HR:[],Finance:[]};
+      employees.forEach(e=>{ deptCounts[e.dept]++; deptSalaries[e.dept].push(Number(e.salary)); });
+      empChart.data.datasets[0].data=[deptCounts.IT,deptCounts.HR,deptCounts.Finance]; empChart.update();
+      salaryChart.data.datasets[0].data=[avg(deptSalaries.IT),avg(deptSalaries.HR),avg(deptSalaries.Finance)]; salaryChart.update();
+    }
+    function avg(arr){ return arr.length? arr.reduce((a,b)=>a+b,0)/arr.length:0; }
+  </script>
+</body>
+</html>
