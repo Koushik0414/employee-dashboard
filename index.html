@@ -82,102 +82,193 @@
   </main>
 
   <script>
-    let employees = JSON.parse(localStorage.getItem('employees') || '[]');
+    // Load employees from localStorage and normalize
+    let employees = JSON.parse(localStorage.getItem('employees') || '[]').map(e => ({
+      id: String(e.id),
+      name: e.name,
+      dept: e.dept,
+      role: e.role,
+      salary: Number(e.salary)
+    }));
+
+    function saveEmployees() {
+      localStorage.setItem('employees', JSON.stringify(employees));
+    }
 
     function showSection(id) {
       document.querySelectorAll('section').forEach(s => s.classList.remove('active'));
       document.getElementById(id).classList.add('active');
-      if(id==='employeeList') renderTable();
-      if(id==='statistics') updateCharts();
+      if (id === 'employeeList') renderTable();
+      if (id === 'statistics') updateCharts();
     }
 
     // Add / Update Employee
     const empForm = document.getElementById('empForm');
-    empForm.addEventListener('submit', e=>{
+    empForm.addEventListener('submit', e => {
       e.preventDefault();
-      const id=document.getElementById('empId').value;
-      const name=document.getElementById('empName').value;
-      const dept=document.getElementById('empDept').value;
-      const role=document.getElementById('empRole').value;
-      const salary=document.getElementById('empSalary').value;
+      const id = document.getElementById('empId').value.trim();
+      const name = document.getElementById('empName').value.trim();
+      const dept = document.getElementById('empDept').value.trim();
+      const role = document.getElementById('empRole').value.trim();
+      const salary = Number(document.getElementById('empSalary').value);
 
-      const index=employees.findIndex(emp=>emp.id==id);
-      if(index>=0) employees[index]={id,name,dept,role,salary};
-      else employees.push({id,name,dept,role,salary});
-      localStorage.setItem('employees', JSON.stringify(employees));
-      empForm.reset(); alert("Saved!");
+      const index = employees.findIndex(emp => emp.id == id);
+      if (index >= 0) {
+        employees[index] = { id, name, dept, role, salary };
+      } else {
+        employees.push({ id, name, dept, role, salary });
+      }
+      saveEmployees();
+      empForm.reset();
+      alert("Saved!");
     });
 
     // Employee Table
     const empTableBody = document.querySelector('#empTable tbody');
     function renderTable() {
-      empTableBody.innerHTML='';
-      employees.forEach(emp=>{
-        empTableBody.innerHTML+=`<tr>
-          <td>${emp.id}</td><td>${emp.name}</td><td>${emp.dept}</td><td>${emp.role}</td><td>${emp.salary}</td>
-          <td>
-            <button onclick="editEmployee(${emp.id})">Edit</button>
-            <button onclick="deleteEmployee(${emp.id})">Delete</button>
-          </td>
-        </tr>`;
+      empTableBody.innerHTML = '';
+      employees.forEach((emp, index) => {
+        empTableBody.innerHTML += `
+          <tr>
+            <td>${emp.id}</td>
+            <td>${emp.name}</td>
+            <td>${emp.dept}</td>
+            <td>${emp.role}</td>
+            <td>${emp.salary}</td>
+            <td>
+              <button onclick="editEmployee(${index})">Edit</button>
+              <button onclick="deleteEmployee(${index})">Delete</button>
+            </td>
+          </tr>`;
       });
     }
-    function editEmployee(id) {
-      const emp=employees.find(e=>e.id==id);
-      if(!emp) return;
+
+    function editEmployee(index) {
+      const emp = employees[index];
+      if (!emp) return;
       showSection('addEmployee');
-      document.getElementById('empId').value=emp.id;
-      document.getElementById('empName').value=emp.name;
-      document.getElementById('empDept').value=emp.dept;
-      document.getElementById('empRole').value=emp.role;
-      document.getElementById('empSalary').value=emp.salary;
+      document.getElementById('empId').value = emp.id;
+      document.getElementById('empName').value = emp.name;
+      document.getElementById('empDept').value = emp.dept;
+      document.getElementById('empRole').value = emp.role;
+      document.getElementById('empSalary').value = emp.salary;
     }
-    function deleteEmployee(id){
-      employees=employees.filter(e=>e.id!=id);
-      localStorage.setItem('employees', JSON.stringify(employees));
+
+    function deleteEmployee(index) {
+      employees.splice(index, 1);
+      saveEmployees();
       renderTable();
     }
-    
+
     // CSV Upload
-    document.getElementById('uploadCsv').addEventListener('change', function(e){
+    document.getElementById('uploadCsv').addEventListener('change', function (e) {
       const file = e.target.files[0];
-      if(!file) return;
+      if (!file) return;
+
       const reader = new FileReader();
-      reader.onload = function(evt){
-        const lines = evt.target.result.split('\n');
-        lines.forEach(line=>{
-          const [id,name,dept,role,salary] = line.trim().split(',');
-          if(id && name) employees.push({id,name,dept,role,salary});
+      reader.onload = function (evt) {
+        const text = evt.target.result.trim();
+        const lines = text.split('\n');
+
+        lines.forEach((line, idx) => {
+          // Skip header row
+          if (idx === 0) return;
+
+          const parts = line.split(',');
+          if (parts.length < 5) return;
+
+          let [id, name, dept, role, salary] = parts.map(x => x.trim());
+          if (!id || !name || !dept || !role || !salary) return;
+
+          salary = Number(salary);
+          const existingIndex = employees.findIndex(e => e.id == id);
+          const empObj = { id, name, dept, role, salary };
+
+          if (existingIndex >= 0) employees[existingIndex] = empObj;
+          else employees.push(empObj);
         });
-        localStorage.setItem('employees', JSON.stringify(employees));
+
+        saveEmployees();
+        e.target.value = ''; // clear file input
         alert("CSV Imported!");
-      }
+        renderTable();
+        updateCharts();
+      };
       reader.readAsText(file);
     });
 
     // Export CSV
-    document.getElementById('exportBtn').addEventListener('click',()=>{
-      const csvContent="data:text/csv;charset=utf-8," + ["ID,Name,Dept,Role,Salary", ...employees.map(e=>`${e.id},${e.name},${e.dept},${e.role},${e.salary}`)].join('\n');
-      const link=document.createElement('a');
+    document.getElementById('exportBtn').addEventListener('click', () => {
+      const header = "ID,Name,Dept,Role,Salary";
+      const rows = employees.map(e => `${e.id},${e.name},${e.dept},${e.role},${e.salary}`);
+      const csvContent = "data:text/csv;charset=utf-8," + [header, ...rows].join('\n');
+
+      const link = document.createElement('a');
       link.setAttribute('href', csvContent);
-      link.setAttribute('download','employees.csv');
-      document.body.appendChild(link); link.click(); document.body.removeChild(link);
+      link.setAttribute('download', 'employees.csv');
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
     });
 
     // Charts
     const empCtx = document.getElementById('empChart');
     const salaryCtx = document.getElementById('salaryChart');
-    let empChart = new Chart(empCtx,{ type:'bar', data:{ labels:['IT','HR','Finance'], datasets:[{label:'Employees', data:[0,0,0], backgroundColor:['#3498db','#2ecc71','#e74c3c']}]}, options:{ responsive:true }});
-    let salaryChart = new Chart(salaryCtx,{ type:'pie', data:{ labels:['IT','HR','Finance'], datasets:[{label:'Avg Salary', data:[0,0,0], backgroundColor:['#9b59b6','#f1c40f','#1abc9c']}]}, options:{ responsive:true }});
-    function updateCharts(){
-      const deptCounts={IT:0,HR:0,Finance:0}; const deptSalaries={IT:[],HR:[],Finance:[]};
-      employees.forEach(e=>{ deptCounts[e.dept]++; deptSalaries[e.dept].push(Number(e.salary)); });
-      empChart.data.datasets[0].data=[deptCounts.IT,deptCounts.HR,deptCounts.Finance]; empChart.update();
-      salaryChart.data.datasets[0].data=[avg(deptSalaries.IT),avg(deptSalaries.HR),avg(deptSalaries.Finance)]; salaryChart.update();
+
+    let empChart = new Chart(empCtx, {
+      type: 'bar',
+      data: {
+        labels: ['IT', 'HR', 'Finance'],
+        datasets: [{
+          label: 'Employees',
+          data: [0, 0, 0],
+          backgroundColor: ['#3498db', '#2ecc71', '#e74c3c']
+        }]
+      },
+      options: { responsive: true }
+    });
+
+    let salaryChart = new Chart(salaryCtx, {
+      type: 'pie',
+      data: {
+        labels: ['IT', 'HR', 'Finance'],
+        datasets: [{
+          label: 'Avg Salary',
+          data: [0, 0, 0],
+          backgroundColor: ['#9b59b6', '#f1c40f', '#1abc9c']
+        }]
+      },
+      options: { responsive: true }
+    });
+
+    function updateCharts() {
+      const deptCounts = { IT: 0, HR: 0, Finance: 0 };
+      const deptSalaries = { IT: [], HR: [], Finance: [] };
+
+      employees.forEach(e => {
+        if (!deptCounts.hasOwnProperty(e.dept)) return;  // ignore unknown depts
+        deptCounts[e.dept]++;
+        deptSalaries[e.dept].push(Number(e.salary));
+      });
+
+      empChart.data.datasets[0].data = [
+        deptCounts.IT,
+        deptCounts.HR,
+        deptCounts.Finance
+      ];
+      empChart.update();
+
+      salaryChart.data.datasets[0].data = [
+        avg(deptSalaries.IT),
+        avg(deptSalaries.HR),
+        avg(deptSalaries.Finance)
+      ];
+      salaryChart.update();
     }
-    function avg(arr){ return arr.length? arr.reduce((a,b)=>a+b,0)/arr.length:0; }
+
+    function avg(arr) {
+      return arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+    }
   </script>
 </body>
 </html>
-
-
